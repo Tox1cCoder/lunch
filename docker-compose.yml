@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  lunch-bot:
+    build: .
+    container_name: lunch-order-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SHEET_NAME=${SHEET_NAME:-auto}
+      - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+    volumes:
+      # Mount credentials file (keep it outside the image for security)
+      - ./credentials.json:/app/credentials.json:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
