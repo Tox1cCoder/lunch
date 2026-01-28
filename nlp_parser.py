@@ -179,19 +179,18 @@ If it looks like food with or without quantity, it's likely an order. Only class
             # Generate system prompt with message date context
             system_prompt = self._get_system_prompt(message_date)
             
-            # Create generation config with structured output using Pydantic model
             generation_config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=1.0,
-                top_p=0.95,
+                top_p=0.9,
                 top_k=20,
-                max_output_tokens=1024,
+                max_output_tokens=200,
                 response_mime_type="application/json",
                 response_schema=OrderIntent,
                 safety_settings=self.safety_settings,
+                thinking_level=0,
             )
             
-            # Structured prompt following official Gemini docs best practices
             prompt = f"""<message>
 {message}
 </message>
@@ -201,10 +200,12 @@ Classify this Vietnamese message according to your system instructions.
 Return only the JSON response with intent, confidence, day_number, and food_items (if order).
 </instruction>"""
 
+            # Call Gemini API with timeout to prevent indefinite hanging
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=generation_config,
+                request_options={"timeout": 20},  # 20 second timeout
             )
 
             # Check if response has valid candidates
@@ -391,19 +392,21 @@ Examples:
 
 Generate ONE message NOW (return only the message):"""
 
-            # Use plain text generation (not JSON)
             plain_config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=1.0,
                 top_p=0.9,
-                max_output_tokens=150,
+                max_output_tokens=100,
                 safety_settings=self.safety_settings,
+                thinking_level=0,
             )
 
+            # Call Gemini API with timeout to prevent indefinite hanging
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt_content,
                 config=plain_config,
+                request_options={"timeout": 20},  # 20 second timeout
             )
 
             if response and response.text:

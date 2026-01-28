@@ -53,7 +53,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # Parse the message for order intent using Gemini AI (get full result with day_number and food_items)
-    parse_result = parser.parse_message_full(message_text, message_date=message_date_vietnam)
+    try:
+        parse_result = parser.parse_message_full(message_text, message_date=message_date_vietnam)
+    except Exception as e:
+        logger.error(f"Error parsing message with Gemini API: {e}")
+        # Don't crash the bot, just skip this message
+        return
 
     if not parse_result:
         return
@@ -79,26 +84,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # User is placing an order
         success = sheets_manager.mark_order(user_name, True, target_date)
         if success:
-            # Generate dynamic confirmation message
-            confirmation = parser.generate_confirmation_message(
-                user_name=user_name,
-                intent="order",
-                food_items=intent_data.food_items,
-                date_desc=date_desc,
-            )
-            await update.message.reply_text(
-                confirmation,
-                reply_to_message_id=update.message.message_id,
-            )
+            # Generate dynamic confirmation message with error handling
+            try:
+                confirmation = parser.generate_confirmation_message(
+                    user_name=user_name,
+                    intent="order",
+                    food_items=intent_data.food_items,
+                    date_desc=date_desc,
+                )
+            except Exception as e:
+                logger.error(f"Error generating confirmation message: {e}")
+                # Fallback to simple message
+                food_text = f" - {intent_data.food_items}" if intent_data.food_items else ""
+                confirmation = f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+            
+            try:
+                await update.message.reply_text(
+                    confirmation,
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.error(f"Error sending reply to Telegram: {e}")
+                # Bot will continue running even if reply fails
+            
             logger.info(
                 f"Marked order for {user_name} on {target_date.strftime('%d/%m/%Y')} - Food: {intent_data.food_items}"
             )
         else:
-            await update.message.reply_text(
-                f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}. "
-                f"Vui lòng kiểm tra tên Telegram của bạn có trùng với tên trong sheet không.",
-                reply_to_message_id=update.message.message_id,
-            )
+            try:
+                await update.message.reply_text(
+                    f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}. "
+                    f"Vui lòng kiểm tra tên Telegram của bạn có trùng với tên trong sheet không.",
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.error(f"Error sending error message to Telegram: {e}")
+            
             logger.warning(
                 f"Failed to mark order for {user_name} on {target_date.strftime('%d/%m/%Y')}"
             )
@@ -107,27 +128,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # User is cancelling their order
         success = sheets_manager.mark_order(user_name, False, target_date)
         if success:
-            # Generate dynamic cancellation message
-            confirmation = parser.generate_confirmation_message(
-                user_name=user_name,
-                intent="cancel",
-                date_desc=date_desc,
-            )
-            await update.message.reply_text(
-                confirmation,
-                reply_to_message_id=update.message.message_id,
-            )
+            # Generate dynamic cancellation message with error handling
+            try:
+                confirmation = parser.generate_confirmation_message(
+                    user_name=user_name,
+                    intent="cancel",
+                    date_desc=date_desc,
+                )
+            except Exception as e:
+                logger.error(f"Error generating cancellation message: {e}")
+                # Fallback to simple message
+                confirmation = f"❌ Đã hủy order của {user_name} cho {date_desc}!"
+            
+            try:
+                await update.message.reply_text(
+                    confirmation,
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.error(f"Error sending reply to Telegram: {e}")
+                # Bot will continue running even if reply fails
+            
             logger.info(
                 f"Cancelled order for {user_name} on {target_date.strftime('%d/%m/%Y')}"
             )
         else:
-            await update.message.reply_text(
-                f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}.",
-                reply_to_message_id=update.message.message_id,
-            )
+            try:
+                await update.message.reply_text(
+                    f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}.",
+                    reply_to_message_id=update.message.message_id,
+                )
+            except Exception as e:
+                logger.error(f"Error sending error message to Telegram: {e}")
+            
             logger.warning(
                 f"Failed to cancel order for {user_name} on {target_date.strftime('%d/%m/%Y')}"
             )
+
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -181,8 +218,16 @@ def main():
 
     logger.info("Successfully connected to Google Sheets")
 
-    # Create the Application
-    application = Application.builder().token(bot_token).build()
+    # Create the Application with extended timeouts for API operations
+    application = (
+        Application.builder()
+        .token(bot_token)
+        .read_timeout(30)  # Increase read timeout to 30 seconds
+        .write_timeout(30)  # Increase write timeout to 30 seconds
+        .connect_timeout(30)  # Increase connection timeout to 30 seconds
+        .pool_timeout(30)  # Increase pool timeout to 30 seconds
+        .build()
+    )
 
     # Add message handler for all text messages in groups
     application.add_handler(
