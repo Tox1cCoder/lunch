@@ -345,98 +345,103 @@ Return only the JSON response with intent, confidence, day_number, and food_item
         try:
             # Create confirmation prompt
             if intent == "order":
-                food_info = f"món {food_items}" if food_items else "món không rõ"
-                prompt_content = f"""Create a casual Vietnamese food order confirmation message.
+                food_info = food_items if food_items else "món không rõ"
+                system_instruction = """You are a casual Vietnamese food order bot assistant. 
+Generate short, friendly confirmation messages in Vietnamese with emojis.
+Return ONLY the message text, no JSON, no explanation."""
 
-User: {user_name}
-Food: {food_items if food_items else "không rõ"}
-Date: {date_desc}
+                prompt_content = f"""Generate a casual Vietnamese confirmation message for this order:
+- User: {user_name}
+- Food: {food_info}
+- Date: {date_desc}
 
-Write ONE confirmation message that:
-- Starts with ✅ emoji
-- Uses casual Vietnamese (tui, nha, nhé, etc.)
-- Mentions the food item
-- Is short (1-2 sentences)
-- 50% of the time: adds a light joke or health comment
-- 50% of the time: is straightforward
+Requirements:
+- Start with ✅ emoji
+- Use casual Vietnamese (nha, nhé, luôn, etc.)
+- Mention the food and user
+- 1-2 sentences max
+- Sometimes add health comment or joke, sometimes be straightforward
 
-Example styles:
-"✅ Đã note {food_info} cho {user_name} {date_desc}! Ngon lành 😋"
-"✅ Roger! {user_name} - {food_info} {date_desc} nhé"
-"✅ Ghi nhận rồi nha! {user_name} ăn {food_info} {date_desc}. Healthy đó 💪"
+Examples:
+✅ Đã note {food_info} cho {user_name} {date_desc}! Ngon lành 😋
+✅ Roger! {user_name} - {food_info} {date_desc} nhé
+✅ Ghi nhận rồi nha! {user_name} ăn {food_info} {date_desc}. Healthy đó 💪
 
-Return ONLY the message, nothing else."""
+Generate ONE message NOW (return only the message):"""
+
             else:  # cancel
-                prompt_content = f"""Create a casual Vietnamese cancellation confirmation message.
+                system_instruction = """You are a casual Vietnamese food order bot assistant. 
+Generate short, friendly cancellation messages in Vietnamese with emojis.
+Return ONLY the message text, no JSON, no explanation."""
 
-User: {user_name}
-Date: {date_desc}
+                prompt_content = f"""Generate a casual Vietnamese cancellation message:
+- User: {user_name}
+- Date: {date_desc}
 
-Write ONE cancellation message that:
-- Starts with ❌ emoji
-- Uses casual Vietnamese tone
-- Is short (1 sentence)
-- Sometimes adds a sympathetic or joking comment
+Requirements:
+- Start with ❌ emoji
+- Use casual Vietnamese
+- 1 sentence
+- Sometimes add sympathetic or joking comment
 
-Example styles:
-"❌ Đã cancel order {user_name} cho {date_desc}"
-"❌ Ok noted! {user_name} không ăn {date_desc}. Tiết kiệm tiền nha 💰"
-"❌ Hủy rồi nhen! {user_name} - {date_desc}"
+Examples:
+❌ Đã cancel order {user_name} cho {date_desc}
+❌ Ok noted! {user_name} không ăn {date_desc}. Tiết kiệm tiền nha 💰
+❌ Hủy rồi nhen! {user_name} - {date_desc}
 
-Return ONLY the message, nothing else."""
+Generate ONE message NOW (return only the message):"""
 
-            # Create generation config for confirmation messages
-            confirmation_config = types.GenerateContentConfig(
-                temperature=1.2,  # Moderate temperature for variety but consistency
+            # Use plain text generation (not JSON)
+            plain_config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=1.0,
                 top_p=0.9,
-                top_k=40,
-                max_output_tokens=200,
-                response_mime_type="application/json",
-                response_schema=ConfirmationMessage,
+                max_output_tokens=150,
                 safety_settings=self.safety_settings,
             )
 
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt_content,
-                config=confirmation_config,
+                config=plain_config,
             )
 
             if response and response.text:
-                response_text = response.text.strip()
+                message = response.text.strip()
                 
-                # Try to extract JSON if there's preamble text
-                import json
-                try:
-                    # First try direct parsing
-                    result = ConfirmationMessage.model_validate_json(response_text)
-                except Exception as e1:
-                    # If that fails, try to extract JSON from the text
-                    logger.warning(f"Direct JSON parse failed, attempting extraction: {e1}")
-                    try:
-                        # Look for JSON object in the response
-                        start_idx = response_text.find('{')
-                        end_idx = response_text.rfind('}') + 1
-                        if start_idx != -1 and end_idx > start_idx:
-                            json_str = response_text[start_idx:end_idx]
-                            result = ConfirmationMessage.model_validate_json(json_str)
-                        else:
-                            raise ValueError("No JSON object found in response")
-                    except Exception as e2:
-                        logger.error(f"JSON extraction also failed: {e2}")
-                        logger.error(f"Response text was: {response_text[:200]}")
-                        raise e2
+                # Clean up the response - remove common preamble patterns
+                preamble_patterns = [
+                    "Here is the JSON requested:",
+                    "Here is the message:",
+                    "Here's the message:",
+                    "Message:",
+                    "Response:",
+                ]
+                for pattern in preamble_patterns:
+                    if message.startswith(pattern):
+                        message = message[len(pattern):].strip()
                 
-                logger.info(f"Generated confirmation: {result.message[:50]}...")
-                return result.message
-            else:
-                # Fallback to simple message
-                logger.warning("No response text from LLM, using fallback")
-                if intent == "order":
-                    food_text = f" - {food_items}" if food_items else ""
-                    return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+                # Remove quotes if the LLM wrapped the message
+                if message.startswith('"') and message.endswith('"'):
+                    message = message[1:-1]
+                if message.startswith("'") and message.endswith("'"):
+                    message = message[1:-1]
+                
+                # Verify it starts with expected emoji
+                if message and (message.startswith('✅') or message.startswith('❌')):
+                    logger.info(f"Generated confirmation: {message[:50]}...")
+                    return message
                 else:
-                    return f"❌ Đã hủy order của {user_name} cho {date_desc}!"
+                    logger.warning(f"Generated message doesn't start with emoji: {message[:100]}")
+                    # Fall through to fallback
+            
+            # Fallback to template
+            logger.warning("Using fallback template for confirmation")
+            if intent == "order":
+                food_text = f" - {food_items}" if food_items else ""
+                return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+            else:
+                return f"❌ Đã hủy order của {user_name} cho {date_desc}!"
 
         except Exception as e:
             logger.error(f"Error generating confirmation message: {e}")
