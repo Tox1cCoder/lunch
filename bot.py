@@ -114,8 +114,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await update.message.reply_text(
                     f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}. "
-                    f"Vui lòng kiểm tra tên Telegram của bạn có trùng với tên trong sheet không.",
-                    reply_to_message_id=update.message.message_id,
+                    f"Vui lòng kiểm tra tên Telegram của bạn có trùng với tên trong sheet không."
                 )
             except Exception as e:
                 logger.error(f"Error sending error message to Telegram: {e}")
@@ -155,8 +154,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             try:
                 await update.message.reply_text(
-                    f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}.",
-                    reply_to_message_id=update.message.message_id,
+                    f"⚠️ Không tìm thấy tên '{user_name}' trong bảng hoặc không tìm thấy cột ngày {date_desc}."
                 )
             except Exception as e:
                 logger.error(f"Error sending error message to Telegram: {e}")
