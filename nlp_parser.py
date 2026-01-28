@@ -199,12 +199,11 @@ Classify this Vietnamese message according to your system instructions.
 Return only the JSON response with intent, confidence, day_number, and food_items (if order).
 </instruction>"""
 
-            # Call Gemini API with timeout to prevent indefinite hanging
+            # Call Gemini API
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=generation_config,
-                request_options={"timeout": 20},  # 20 second timeout
             )
 
             # Check if response has valid candidates
@@ -399,12 +398,11 @@ Generate ONE message NOW (return only the message):"""
                 safety_settings=self.safety_settings,
             )
 
-            # Call Gemini API with timeout to prevent indefinite hanging
+            # Call Gemini API
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt_content,
                 config=plain_config,
-                request_options={"timeout": 20},  # 20 second timeout
             )
 
             if response and response.text:
