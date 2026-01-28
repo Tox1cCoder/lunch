@@ -188,7 +188,6 @@ If it looks like food with or without quantity, it's likely an order. Only class
                 response_mime_type="application/json",
                 response_schema=OrderIntent,
                 safety_settings=self.safety_settings,
-                thinking_level=0,
             )
             
             prompt = f"""<message>
@@ -398,7 +397,6 @@ Generate ONE message NOW (return only the message):"""
                 top_p=0.9,
                 max_output_tokens=100,
                 safety_settings=self.safety_settings,
-                thinking_level=0,
             )
 
             # Call Gemini API with timeout to prevent indefinite hanging
