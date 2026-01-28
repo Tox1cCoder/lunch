@@ -345,57 +345,52 @@ Return only the JSON response with intent, confidence, day_number, and food_item
         try:
             # Create confirmation prompt
             if intent == "order":
-                food_context = f" (món: {food_items})" if food_items else ""
-                prompt_content = f"""Generate a casual Vietnamese confirmation message for a food order.
+                food_info = f"món {food_items}" if food_items else "món không rõ"
+                prompt_content = f"""Create a casual Vietnamese food order confirmation message.
 
-Context:
-- User: {user_name}
-- Intent: Placing order
-- Food: {food_items if food_items else "không rõ"}
-- Date: {date_desc}
+User: {user_name}
+Food: {food_items if food_items else "không rõ"}
+Date: {date_desc}
 
-Requirements:
-- Start with ✅ emoji
-- Use casual Vietnamese tone (tui, nha, etc.)
-- Include the food item if provided
-- Sometimes add a light joke or comment about the food (healthy, yummy, etc.)
-- Sometimes just be straightforward
-- Keep it short (1-2 sentences max)
+Write ONE confirmation message that:
+- Starts with ✅ emoji
+- Uses casual Vietnamese (tui, nha, nhé, etc.)
+- Mentions the food item
+- Is short (1-2 sentences)
+- 50% of the time: adds a light joke or health comment
+- 50% of the time: is straightforward
 
-Examples:
-- "✅ Đã ghi nhận order {food_items} cho {user_name} {date_desc}! Healthy choice nha 💪"
-- "✅ Ok noted! {user_name} đặt {food_items} {date_desc}. Ngon lành cành đào luôn 😋"
-- "✅ Roger that! {user_name} - {food_items} cho {date_desc} nhé!"
-- "✅ Ghi nhận rồi nhen! {user_name} ăn {food_items} {date_desc}. Nhớ ăn rau nữa nha 🥗"
+Example styles:
+"✅ Đã note {food_info} cho {user_name} {date_desc}! Ngon lành 😋"
+"✅ Roger! {user_name} - {food_info} {date_desc} nhé"
+"✅ Ghi nhận rồi nha! {user_name} ăn {food_info} {date_desc}. Healthy đó 💪"
 
-Generate one similar message NOW:"""
+Return ONLY the message, nothing else."""
             else:  # cancel
-                prompt_content = f"""Generate a casual Vietnamese cancellation confirmation message.
+                prompt_content = f"""Create a casual Vietnamese cancellation confirmation message.
 
-Context:
-- User: {user_name}
-- Intent: Cancelling order
-- Date: {date_desc}
+User: {user_name}
+Date: {date_desc}
 
-Requirements:
-- Start with ❌ emoji
-- Use casual Vietnamese tone
-- Sometimes add sympathy or joke
-- Keep it short (1 sentence)
+Write ONE cancellation message that:
+- Starts with ❌ emoji
+- Uses casual Vietnamese tone
+- Is short (1 sentence)
+- Sometimes adds a sympathetic or joking comment
 
-Examples:
-- "❌ Đã hủy order của {user_name} cho {date_desc}. Tiết kiệm tiền đi ăn sang hơn 💰"
-- "❌ Ok cancel! {user_name} không ăn {date_desc}. Giảm cân à? 😄"
-- "❌ Noted! Đã hủy order {user_name} cho {date_desc}"
+Example styles:
+"❌ Đã cancel order {user_name} cho {date_desc}"
+"❌ Ok noted! {user_name} không ăn {date_desc}. Tiết kiệm tiền nha 💰"
+"❌ Hủy rồi nhen! {user_name} - {date_desc}"
 
-Generate one similar message NOW:"""
+Return ONLY the message, nothing else."""
 
             # Create generation config for confirmation messages
             confirmation_config = types.GenerateContentConfig(
-                temperature=1.3,  # Higher temperature for variety
-                top_p=0.95,
+                temperature=1.2,  # Moderate temperature for variety but consistency
+                top_p=0.9,
                 top_k=40,
-                max_output_tokens=256,
+                max_output_tokens=200,
                 response_mime_type="application/json",
                 response_schema=ConfirmationMessage,
                 safety_settings=self.safety_settings,
@@ -408,12 +403,35 @@ Generate one similar message NOW:"""
             )
 
             if response and response.text:
-                result = ConfirmationMessage.model_validate_json(response.text)
+                response_text = response.text.strip()
+                
+                # Try to extract JSON if there's preamble text
+                import json
+                try:
+                    # First try direct parsing
+                    result = ConfirmationMessage.model_validate_json(response_text)
+                except Exception as e1:
+                    # If that fails, try to extract JSON from the text
+                    logger.warning(f"Direct JSON parse failed, attempting extraction: {e1}")
+                    try:
+                        # Look for JSON object in the response
+                        start_idx = response_text.find('{')
+                        end_idx = response_text.rfind('}') + 1
+                        if start_idx != -1 and end_idx > start_idx:
+                            json_str = response_text[start_idx:end_idx]
+                            result = ConfirmationMessage.model_validate_json(json_str)
+                        else:
+                            raise ValueError("No JSON object found in response")
+                    except Exception as e2:
+                        logger.error(f"JSON extraction also failed: {e2}")
+                        logger.error(f"Response text was: {response_text[:200]}")
+                        raise e2
+                
                 logger.info(f"Generated confirmation: {result.message[:50]}...")
                 return result.message
             else:
                 # Fallback to simple message
-                logger.warning("Failed to generate confirmation, using fallback")
+                logger.warning("No response text from LLM, using fallback")
                 if intent == "order":
                     food_text = f" - {food_items}" if food_items else ""
                     return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
