@@ -74,8 +74,8 @@ class VietnameseOrderParser:
                 ),
             ]
 
-            # Use Gemini 1.5 Flash - faster, no thinking mode, more stable
-            self.model_name = "gemini-1.5-flash"
+            # Use Gemini 3 Flash Preview with minimal thinking
+            self.model_name = "gemini-3-flash-preview"
             logger.info("Gemini API initialized successfully with structured outputs")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini API: {e}")
@@ -180,15 +180,18 @@ If it looks like food with or without quantity, it's likely an order. Only class
             # Generate system prompt with message date context
             system_prompt = self._get_system_prompt(message_date)
             
+            # Create generation config with structured output using Pydantic model
+            # Use ThinkingConfig to minimize thinking for faster responses
             generation_config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=1.0,
                 top_p=0.9,
                 top_k=20,
-                max_output_tokens=300,  # Increased to avoid MAX_TOKENS with thinking
+                max_output_tokens=350,  # Account for minimal thinking overhead
                 response_mime_type="application/json",
                 response_schema=OrderIntent,
                 safety_settings=self.safety_settings,
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             )
             
             prompt = f"""<message>
@@ -391,12 +394,15 @@ Examples:
 
 Generate ONE message NOW (return only the message):"""
 
+            # Use plain text generation (not JSON)
+            # Use ThinkingConfig to minimize thinking for faster responses
             plain_config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=1.0,
                 top_p=0.9,
-                max_output_tokens=150,  # Increased to avoid MAX_TOKENS
+                max_output_tokens=200,  # Account for minimal thinking overhead
                 safety_settings=self.safety_settings,
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             )
 
             # Call Gemini API
