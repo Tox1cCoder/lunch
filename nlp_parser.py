@@ -74,7 +74,8 @@ class VietnameseOrderParser:
                 ),
             ]
 
-            self.model_name = "gemini-3-flash-preview"
+            # Use Gemini 1.5 Flash - faster, no thinking mode, more stable
+            self.model_name = "gemini-1.5-flash"
             logger.info("Gemini API initialized successfully with structured outputs")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini API: {e}")
@@ -184,7 +185,7 @@ If it looks like food with or without quantity, it's likely an order. Only class
                 temperature=1.0,
                 top_p=0.9,
                 top_k=20,
-                max_output_tokens=200,
+                max_output_tokens=300,  # Increased to avoid MAX_TOKENS with thinking
                 response_mime_type="application/json",
                 response_schema=OrderIntent,
                 safety_settings=self.safety_settings,
@@ -394,7 +395,7 @@ Generate ONE message NOW (return only the message):"""
                 system_instruction=system_instruction,
                 temperature=1.0,
                 top_p=0.9,
-                max_output_tokens=100,
+                max_output_tokens=150,  # Increased to avoid MAX_TOKENS
                 safety_settings=self.safety_settings,
             )
 
