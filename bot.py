@@ -6,6 +6,7 @@ Tracks food orders in Vietnamese group chats and logs to Google Sheets
 import logging
 import os
 from datetime import datetime
+import pytz
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -41,10 +42,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_name = user.first_name
 
-    logger.info(f"Received message from {user_name}: {message_text}")
+    # Get message timestamp from Telegram (already timezone-aware in UTC)
+    message_timestamp_utc = update.message.date
+    # Convert to Vietnam timezone
+    vietnam_tz = pytz.timezone('Asia/Ho_Chi_Minh')
+    message_date_vietnam = message_timestamp_utc.astimezone(vietnam_tz)
 
-    # Parse the message for order intent using Gemini AI (get full result with day_number)
-    parse_result = parser.parse_message_full(message_text)
+    logger.info(
+        f"Received message from {user_name} at {message_date_vietnam.strftime('%Y-%m-%d %H:%M:%S %Z')}: {message_text}"
+    )
+
+    # Parse the message for order intent using Gemini AI (get full result with day_number and food_items)
+    parse_result = parser.parse_message_full(message_text, message_date=message_date_vietnam)
 
     if not parse_result:
         return
@@ -59,8 +68,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Determine the date description for the reply
     date_desc = "hôm nay"
-    if target_date.date() < datetime.now().date():
-        days_ago = (datetime.now().date() - target_date.date()).days
+    if target_date.date() < message_date_vietnam.date():
+        days_ago = (message_date_vietnam.date() - target_date.date()).days
         if days_ago == 1:
             date_desc = "hôm qua"
         else:
@@ -70,12 +79,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # User is placing an order
         success = sheets_manager.mark_order(user_name, True, target_date)
         if success:
+            # Generate dynamic confirmation message
+            confirmation = parser.generate_confirmation_message(
+                user_name=user_name,
+                intent="order",
+                food_items=intent_data.food_items,
+                date_desc=date_desc,
+            )
             await update.message.reply_text(
-                f"✅ Đã ghi nhận order của {user_name} cho {date_desc}!",
+                confirmation,
                 reply_to_message_id=update.message.message_id,
             )
             logger.info(
-                f"Marked order for {user_name} on {target_date.strftime('%d/%m/%Y')}"
+                f"Marked order for {user_name} on {target_date.strftime('%d/%m/%Y')} - Food: {intent_data.food_items}"
             )
         else:
             await update.message.reply_text(
@@ -91,8 +107,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # User is cancelling their order
         success = sheets_manager.mark_order(user_name, False, target_date)
         if success:
+            # Generate dynamic cancellation message
+            confirmation = parser.generate_confirmation_message(
+                user_name=user_name,
+                intent="cancel",
+                date_desc=date_desc,
+            )
             await update.message.reply_text(
-                f"❌ Đã hủy order của {user_name} cho {date_desc}!",
+                confirmation,
                 reply_to_message_id=update.message.message_id,
             )
             logger.info(

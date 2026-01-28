@@ -10,3 +10,4 @@ env/
 ENV/
 *.log
 .vscode
+.agent
