@@ -273,14 +273,14 @@ class SheetsManager:
             return None
 
     def mark_order(
-        self, user_name: str, has_order: bool, date: Optional[datetime] = None
+        self, user_name: str, price: int = None, date: Optional[datetime] = None
     ) -> bool:
         """
         Mark a user's order status for a specific date
 
         Args:
             user_name: The user's name
-            has_order: True to mark as ordered, False to mark as not ordered
+            price: Order price in VND (30000, 35000, or 40000). None to clear/cancel.
             date: The date (defaults to today)
 
         Returns:
@@ -311,11 +311,11 @@ class SheetsManager:
                 )
                 return False
 
-            # Update the cell with TRUE or FALSE
-            value = "TRUE" if has_order else "FALSE"
+            # Update the cell with price value or clear it
+            value = price if price is not None else ""
             self.worksheet.update_cell(row, col, value)
             logger.info(
-                f"Updated {user_name}'s order to {value} for {date.strftime('%d/%m/%Y')} in sheet '{self.worksheet.title}'"
+                f"Updated {user_name}'s order to {value if value else 'CLEARED'} for {date.strftime('%d/%m/%Y')} in sheet '{self.worksheet.title}'"
             )
             return True
 
@@ -325,7 +325,7 @@ class SheetsManager:
 
     def get_order_status(
         self, user_name: str, date: Optional[datetime] = None
-    ) -> Optional[bool]:
+    ) -> Optional[int]:
         """
         Get a user's order status for a specific date
 
@@ -334,7 +334,7 @@ class SheetsManager:
             date: The date (defaults to today)
 
         Returns:
-            True if ordered, False if not ordered, None if not found or error
+            Price (int) if ordered, None if not ordered or error
         """
         if date is None:
             date = datetime.now()
@@ -351,10 +351,11 @@ class SheetsManager:
             # Get the cell value
             value = self.worksheet.cell(row, col).value
 
-            if value and value.upper() == "TRUE":
-                return True
-            elif value and value.upper() == "FALSE":
-                return False
+            if value and str(value).strip():
+                try:
+                    return int(float(str(value).strip()))
+                except (ValueError, TypeError):
+                    return None
             else:
                 return None
 
@@ -372,7 +373,7 @@ class SheetsManager:
             date: The date (defaults to today)
 
         Returns:
-            List of dicts with 'name' and 'has_order' keys
+            List of dicts with 'name' and 'price' keys (price is int or None)
         """
         if date is None:
             date = datetime.now()
@@ -385,14 +386,17 @@ class SheetsManager:
 
             # Get all names and order statuses
             names = self.worksheet.col_values(1)[1:]  # Skip header
-            order_statuses = self.worksheet.col_values(col)[1:]  # Skip header
+            order_values = self.worksheet.col_values(col)[1:]  # Skip header
 
             for i, name in enumerate(names):
                 if name.strip():  # Skip empty rows
-                    has_order = False
-                    if i < len(order_statuses) and order_statuses[i].upper() == "TRUE":
-                        has_order = True
-                    summary.append({"name": name, "has_order": has_order})
+                    price = None
+                    if i < len(order_values) and str(order_values[i]).strip():
+                        try:
+                            price = int(float(str(order_values[i]).strip()))
+                        except (ValueError, TypeError):
+                            price = None
+                    summary.append({"name": name, "price": price})
 
             return summary
 

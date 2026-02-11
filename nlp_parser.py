@@ -39,6 +39,10 @@ class OrderIntent(BaseModel):
         default=None,
         description="Food items mentioned in the order (e.g., '1 bánh canh', '2 cơm gà', 'cơm sườn'). Only extract if intent is 'order'."
     )
+    price: Optional[int] = Field(
+        default=None,
+        description="Price of the order in VND. Only valid values are 30000, 35000, or 40000. Extract from patterns like '30k', '35K', '30 ngàn', '30000', etc. null if no price mentioned."
+    )
 
 
 class VietnameseOrderParser:
@@ -138,6 +142,19 @@ When intent is "order", extract the food items mentioned:
 - "Tui đặt 2 cơm gà và 1 phở" → food_items: "2 cơm gà và 1 phở"
 - "cơm sườn" → food_items: "cơm sườn"
 
+**PRICE EXTRACTION:**
+When intent is "order", extract the price if mentioned. ONLY valid prices are 30000, 35000, 40000.
+- "30k", "30K", "30 ngàn", "30 nghìn", "30000" → price: 30000
+- "35k", "35K", "35 ngàn", "35 nghìn", "35000" → price: 35000
+- "40k", "40K", "40 ngàn", "40 nghìn", "40000" → price: 40000
+- If no price mentioned → price: null
+- If a different price is mentioned (not 30000/35000/40000), set price to null
+
+Examples:
+- "cho tôi 1 cơm gà 30k" → intent: "order", food_items: "1 cơm gà", price: 30000
+- "1 phở bò 35 ngàn" → intent: "order", food_items: "1 phở bò", price: 35000
+- "cơm sườn" → intent: "order", food_items: "cơm sườn", price: null
+
 **BE LENIENT WITH ORDERS, STRICT WITH NONE:** 
 If it looks like food with or without quantity, it's likely an order. Only classify as "none" when clearly not placing an order."""
 
@@ -200,7 +217,7 @@ If it looks like food with or without quantity, it's likely an order. Only class
 
 <instruction>
 Classify this Vietnamese message according to your system instructions.
-Return only the JSON response with intent, confidence, day_number, and food_items (if order).
+Return only the JSON response with intent, confidence, day_number, food_items (if order), and price (if order and price mentioned).
 </instruction>"""
 
             # Call Gemini API
@@ -234,7 +251,7 @@ Return only the JSON response with intent, confidence, day_number, and food_item
                 if response.text:
                     result = OrderIntent.model_validate_json(response.text)
                     logger.info(
-                        f"Classified '{message[:50]}' as '{result.intent}' (confidence: {result.confidence}, day: {result.day_number})"
+                        f"Classified '{message[:50]}' as '{result.intent}' (confidence: {result.confidence}, day: {result.day_number}, price: {result.price})"
                     )
 
                     # Only return order/cancel if confidence is at least medium
@@ -333,6 +350,7 @@ Return only the JSON response with intent, confidence, day_number, and food_item
         intent: str,
         food_items: Optional[str] = None,
         date_desc: str = "hôm nay",
+        price: Optional[int] = None,
     ) -> str:
         """Generate casual confirmation message using Gemini
         
@@ -341,6 +359,7 @@ Return only the JSON response with intent, confidence, day_number, and food_item
             intent: 'order' or 'cancel'
             food_items: Food items ordered (if any)
             date_desc: Date description in Vietnamese (e.g., "hôm nay", "hôm qua")
+            price: Order price in VND (e.g., 30000, 35000, 40000)
             
         Returns:
             Casual Vietnamese confirmation message
@@ -349,6 +368,7 @@ Return only the JSON response with intent, confidence, day_number, and food_item
             # Create confirmation prompt
             if intent == "order":
                 food_info = food_items if food_items else "món không rõ"
+                price_info = f"{price // 1000}k" if price else "giá không rõ"
                 system_instruction = """You are a casual Vietnamese food order bot assistant. 
 Generate short, friendly confirmation messages in Vietnamese with emojis.
 Return ONLY the message text, no JSON, no explanation."""
@@ -356,19 +376,20 @@ Return ONLY the message text, no JSON, no explanation."""
                 prompt_content = f"""Generate a casual Vietnamese confirmation message for this order:
 - User: {user_name}
 - Food: {food_info}
+- Price: {price_info}
 - Date: {date_desc}
 
 Requirements:
 - Start with ✅ emoji
 - Use casual Vietnamese (nha, nhé, luôn, etc.)
-- Mention the food and user
+- Mention the food, price, and user
 - 1-2 sentences max
 - Sometimes add health comment or joke, sometimes be straightforward
 
 Examples:
-✅ Đã note {food_info} cho {user_name} {date_desc}! Ngon lành 😋
-✅ Roger! {user_name} - {food_info} {date_desc} nhé
-✅ Ghi nhận rồi nha! {user_name} ăn {food_info} {date_desc}. Healthy đó 💪
+✅ Đã note {food_info} ({price_info}) cho {user_name} {date_desc}! Ngon lành 😋
+✅ Roger! {user_name} - {food_info} {price_info} {date_desc} nhé
+✅ Ghi nhận rồi nha! {user_name} ăn {food_info} {price_info} {date_desc}. Healthy đó 💪
 
 Generate ONE message NOW (return only the message):"""
 
@@ -445,7 +466,8 @@ Generate ONE message NOW (return only the message):"""
             logger.warning("Using fallback template for confirmation")
             if intent == "order":
                 food_text = f" - {food_items}" if food_items else ""
-                return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+                price_text = f" ({price // 1000}k)" if price else ""
+                return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}{price_text}!"
             else:
                 return f"❌ Đã hủy order của {user_name} cho {date_desc}!"
 
@@ -454,6 +476,7 @@ Generate ONE message NOW (return only the message):"""
             # Fallback to simple message
             if intent == "order":
                 food_text = f" - {food_items}" if food_items else ""
-                return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+                price_text = f" ({price // 1000}k)" if price else ""
+                return f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}{price_text}!"
             else:
                 return f"❌ Đã hủy order của {user_name} cho {date_desc}!"

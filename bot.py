@@ -13,6 +13,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
 from nlp_parser import VietnameseOrderParser
 from sheets_manager import SheetsManager
+from config import VALID_PRICES, DEFAULT_PRICE
 
 # Configure logging
 logging.basicConfig(
@@ -81,8 +82,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             date_desc = f"ngày {target_date.day}/{target_date.month}"
 
     if intent == "order":
+        # Extract and validate price
+        price = intent_data.price
+        if price is None or price not in VALID_PRICES:
+            price = DEFAULT_PRICE
+
         # User is placing an order
-        success = sheets_manager.mark_order(user_name, True, target_date)
+        success = sheets_manager.mark_order(user_name, price, target_date)
         if success:
             # Generate dynamic confirmation message with error handling
             try:
@@ -91,12 +97,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     intent="order",
                     food_items=intent_data.food_items,
                     date_desc=date_desc,
+                    price=price,
                 )
             except Exception as e:
                 logger.error(f"Error generating confirmation message: {e}")
                 # Fallback to simple message
                 food_text = f" - {intent_data.food_items}" if intent_data.food_items else ""
-                confirmation = f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}!"
+                price_text = f" ({price // 1000}k)"
+                confirmation = f"✅ Đã ghi nhận order của {user_name} cho {date_desc}{food_text}{price_text}!"
             
             try:
                 await update.message.reply_text(
@@ -108,7 +116,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Bot will continue running even if reply fails
             
             logger.info(
-                f"Marked order for {user_name} on {target_date.strftime('%d/%m/%Y')} - Food: {intent_data.food_items}"
+                f"Marked order for {user_name} on {target_date.strftime('%d/%m/%Y')} - Food: {intent_data.food_items} - Price: {price}"
             )
         else:
             try:
@@ -124,8 +132,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     elif intent == "cancel":
-        # User is cancelling their order
-        success = sheets_manager.mark_order(user_name, False, target_date)
+        # User is cancelling their order (pass None to clear cell)
+        success = sheets_manager.mark_order(user_name, None, target_date)
         if success:
             # Generate dynamic cancellation message with error handling
             try:

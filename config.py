@@ -15,6 +15,10 @@ MESSAGES = {
     "error": "❗ Đã có lỗi xảy ra. Vui lòng thử lại sau.",
 }
 
+# Valid order prices (VND)
+VALID_PRICES = [30000, 35000, 40000]
+DEFAULT_PRICE = 30000
+
 # Date formats to try when searching for date columns
 DATE_FORMATS = [
     "%-d/%-m/%Y",  # 22/1/2026
